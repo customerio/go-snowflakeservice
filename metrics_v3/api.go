@@ -8,6 +8,7 @@ import (
 
 func SearchMetrics(writer http.ResponseWriter, request *http.Request){
 	params := request.URL.Query();
+	//fmt.Println(request.URL)
 
 	data, err := getMetrics(request.Context(), params)
 		if err != nil {

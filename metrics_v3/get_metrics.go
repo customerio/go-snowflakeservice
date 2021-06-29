@@ -3,10 +3,13 @@ package metrics_v3
 
 import (
 	"context"
-	"database/sql"
+	//	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/jmoiron/sqlx"
 )
 
 // func getMetricsAsync(){
@@ -17,44 +20,43 @@ func getMetrics(ctx context.Context, params map[string][]string ) (Result, error
     result := Result{}
 
     //db
-	db, dbErr := ctx.Value("db").(*sql.DB)
+	db, dbErr := ctx.Value("db").(*sqlx.DB)
 
     if !dbErr {
         return result, errors.New("could not get database connection pool from context")
     }
+
+    //get page number and data size
+    limit := 10;
+    offset := 0;
+
+    size, s_ok := params["size"]
+    if(s_ok && len(size) == 1){
+        number, _ := strconv.Atoi(size[0])
+        limit = number 
+    }
+
+    page, pg_ok := params["page"]
+    if(pg_ok && len(page) == 1){
+        pg, _ := strconv.Atoi(page[0])
+        offset = limit * (pg - 1)
+    }
+
 
     //build query here
     var query, q_err = buildQuery(params)
     if(q_err != nil){
         return result, q_err
     }
+    query += fmt.Sprintf(" limit %d offset %d", limit, offset)
 
-   // fmt.Println(query)
 
-    //get metrics
-    rows, queryErr := db.Query(query)
+    //get data
+    var allMetrics []MetricsModel //= []MetricsModel{}
+    queryErr := db.Select(&allMetrics,  query)
+
     if queryErr != nil {
         return result, queryErr
-    }
-    defer rows.Close()
-
-    
-    var allMetrics []MetricsModel
-    for rows.Next() {
-
-        var metricsModel MetricsModel
-        rowErr := rows.Scan(&metricsModel.Campaign_ID, &metricsModel.Newsletter_id, &metricsModel.Created_At,
-                            &metricsModel.Metric, &metricsModel.Metric_count)
-
-        if rowErr != nil {
-            return result, rowErr
-        }
-                
-        allMetrics = append(allMetrics, metricsModel)
-    }
-
-    if rows.Err() != nil {
-        return result, rows.Err()
     }
 
     result.WorkspaceID = params["workspace_id"][0];
@@ -66,8 +68,6 @@ func getMetrics(ctx context.Context, params map[string][]string ) (Result, error
 
 
 func buildQuery(params map[string][]string) (string, error){
-    //retrieve query parameters from the context
-
     //if campaign 
     isCampaign, c_ok := params["isCampaign"]
     if c_ok && len(isCampaign) == 1 && isCampaign[0] == "true" {
@@ -87,7 +87,7 @@ func buildQuery(params map[string][]string) (string, error){
 }
 
 func buildCampaignQuery(params map[string][]string) (string,  error){
-    var queryString =   "select d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric, count(metric) as metric_count" +"\n"+
+    var queryString =   "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" +"\n"+
                         "from DELIVERIES d " + "\n" +
                         "join metrics_up_to_20210603 m " + "\n" +
                         "on d.delivery_id = m.delivery_id " + "\n" +
@@ -103,13 +103,14 @@ func buildCampaignQuery(params map[string][]string) (string,  error){
 
     //after all query options
     queryString += "and d.campaign_id is not null "
-    queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric"
+    queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " + "\n" +
+                    "order by d.campaign_id, to_date(d.created_at) "
 
     return queryString, nil
 }
 
 func buildNewsletterQuery(params map[string][]string) (string,  error){
-    var queryString =   "select d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric, count(metric) as metric_count" +"\n"+
+    var queryString =   "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" +"\n"+
                         "from DELIVERIES d " + "\n" +
                         "join metrics_up_to_20210603 m " + "\n" +
                         "on d.delivery_id = m.delivery_id " + "\n" +
@@ -125,13 +126,14 @@ func buildNewsletterQuery(params map[string][]string) (string,  error){
 
     //after all query options
     queryString += "and d.newsletter_id is not null "
-    queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric"
+    queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " + "\n" +
+                    "order by d.newsletter_id, to_date(d.created_at) "
 
     return queryString, nil
 }
 
 func buildAll(params map[string][]string) (string,  error){
-    var queryString =   "select d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric, count(metric) as metric_count" +"\n"+
+    var queryString =   "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" +"\n"+
                         "from DELIVERIES d " + "\n" +
                         "join metrics_up_to_20210603 m " + "\n" +
                         "on d.delivery_id = m.delivery_id " + "\n" +
@@ -146,7 +148,8 @@ func buildAll(params map[string][]string) (string,  error){
     queryString += subquery
 
     //after all query options
-    queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric"
+    queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " + "\n" +
+                    "order by d.campaign_id, to_date(d.created_at) "
 
     return queryString, nil
 }

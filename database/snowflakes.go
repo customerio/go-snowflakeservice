@@ -5,7 +5,7 @@ import "fmt"
 func GetConnectionString() string{
 	server := "ciodevtest.us-central1.gcp"
 	userName := "adedamola"
-	password := "<password here>"
+	password := "<pass here>"
 	dbName := "CIO_DELIVERIES"
 	schema := "PUBLIC"
 	warehouseName := "COMPUTE_WH"

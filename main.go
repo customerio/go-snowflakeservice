@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"net/http"
 	sf "snowflakeservice/database"
@@ -10,11 +9,12 @@ import (
 	metricsApi "snowflakeservice/metrics_v3"
 
 	"github.com/gorilla/mux"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/snowflakedb/gosnowflake"
 )
 
 //inject db connection into reuests
-func serveDB(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
+func serveDB(db *sqlx.DB, next http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         ctx := context.WithValue(r.Context(), "db", db)
 
@@ -25,7 +25,8 @@ func serveDB(db *sql.DB, next http.HandlerFunc) http.HandlerFunc {
 
 
 func main() {
-	db, err := sql.Open("snowflake", sf.GetConnectionString())
+	
+	db, err := sqlx.Open("snowflake", sf.GetConnectionString())
     if err != nil {
 		
         log.Fatal(err)
