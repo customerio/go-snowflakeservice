@@ -5,6 +5,7 @@ This service provides access to query data from the Snowflakes Storage which con
 There are two endpoints in this application
 - GET "/" : this is the landing page
 - GET "/api/metrics/search?<queryOptions>" : this is the main endpoint used to search the data store based on certain parameters
+- GET "/api/metrics/report?<queryOptions>" : this is the an endpoint used to search the data store based on certain parameters using an async feature. It generates a report in the background and returns the download url when finished
 
 ### Query Options
 The available query options are listed below
