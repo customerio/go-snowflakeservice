@@ -14,7 +14,7 @@ import (
 )
 
 //inject db connection into reuests
-func serveDB(db *sqlx.DB, next http.HandlerFunc) http.HandlerFunc {
+func loadDB(db *sqlx.DB, next http.HandlerFunc) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
         ctx := context.WithValue(r.Context(), "db", db)
 
@@ -33,7 +33,8 @@ func main() {
     }
 
     router := mux.NewRouter().StrictSlash(true)
-	router.HandleFunc("/", serveDB(db, index.HomeLink))
-	router.HandleFunc("/api/metrics/search", serveDB(db, metricsApi.SearchMetrics))
+	router.HandleFunc("/", loadDB(db, index.HomeLink))
+	router.HandleFunc("/api/metrics/search", loadDB(db, metricsApi.SearchMetrics))
+	router.HandleFunc("/api/metrics/report", loadDB(db, metricsApi.GenerateReport))
 	log.Fatal(http.ListenAndServe(":8089", router))
 }

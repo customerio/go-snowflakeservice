@@ -19,3 +19,7 @@ type Result struct{
 
 }
 
+type ReportModel struct {
+	URL string `json:"url"`
+}
+

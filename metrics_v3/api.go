@@ -18,6 +18,16 @@ func SearchMetrics(writer http.ResponseWriter, request *http.Request){
 	returnResultAsJson(writer, 200, data)
 }
 
+func GenerateReport(writer http.ResponseWriter, request *http.Request){
+	params := request.URL.Query();
+	data, err := getMetricsAsync(request.Context(), params)
+		if err != nil {
+			returnErrorAsJson(writer, 500, err.Error())
+			return
+		}
+	returnResultAsJson(writer, 200, data)
+}
+
 func returnErrorAsJson(writer http.ResponseWriter, code int, message string){
 	returnResultAsJson(writer, code, map[string]string{"error":message})
 }

@@ -1,14 +1,17 @@
 package database
 
-import "fmt"
+import (
+	"fmt"
+	config "snowflakeservice/config"
+)
 
 func GetConnectionString() string{
-	server := "ciodevtest.us-central1.gcp"
-	userName := "adedamola"
-	password := "<pass here>"
-	dbName := "CIO_DELIVERIES"
-	schema := "PUBLIC"
-	warehouseName := "COMPUTE_WH"
+	server := config.SF_SERVER
+	userName := config.SF_USERNAME
+	password := config.SF_PASSWORD
+	dbName := config.SF_DBNAME
+	schema := config.SF_SCHEMA
+	warehouseName := config.SF_WAREHOUSE
 
 	//"jsmith:mypassword@myaccount/mydb/testschema?warehouse=mywh"
 	return fmt.Sprintf("%s:%s@%s/%s/%s?warehouse=%s",

@@ -4,40 +4,39 @@ package metrics_v3
 import (
 	"context"
 	//	"database/sql"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
+	//  databaseConfig "snowflakeservice/database"
+
 	"github.com/jmoiron/sqlx"
 )
-
-// func getMetricsAsync(){
-
-// }
 
 func getMetrics(ctx context.Context, params map[string][]string ) (Result, error) {
     result := Result{}
 
     //db
-	db, dbErr := ctx.Value("db").(*sqlx.DB)
-
-    if !dbErr {
+	db, err := ctx.Value("db").(*sqlx.DB)
+    if !err {
         return result, errors.New("could not get database connection pool from context")
     }
 
     //get page number and data size
-    limit := 10;
+    limit := 10; //default
     offset := 0;
 
-    size, s_ok := params["size"]
-    if(s_ok && len(size) == 1){
+    size, ok := params["size"]
+    if ok && len(size) == 1{
         number, _ := strconv.Atoi(size[0])
         limit = number 
     }
 
-    page, pg_ok := params["page"]
-    if(pg_ok && len(page) == 1){
+    page, ok := params["page"]
+    if(ok && len(page) == 1){
         pg, _ := strconv.Atoi(page[0])
         offset = limit * (pg - 1)
     }
@@ -66,6 +65,107 @@ func getMetrics(ctx context.Context, params map[string][]string ) (Result, error
     return result, nil
 }
 
+func getMetricsAsync(ctx context.Context, params map[string][]string) (r *ReportModel, e error){
+    
+    reportModel, r_err := generateReport(ctx, params)
+    
+    if e, ok := <-r_err ; ok{
+        return r, e
+    }
+  
+    r = <-reportModel
+    return r,nil
+ }
+
+
+ //helpers
+func generateReport(ctx context.Context, params map[string][]string) (chan *ReportModel, chan error){
+
+    reportChannel := make(chan *ReportModel)
+    errorChannel := make(chan error)
+
+    go func(){
+        // defer close(reportChannel)
+        // defer close(errorChannel)
+        
+        //db
+        db, err := ctx.Value("db").(*sqlx.DB)
+        if !err {
+            errorChannel <- errors.New("could not get database connection pool from context")
+            return 
+        }
+
+        allMetrics := []MetricsModel{}
+
+        //build query here
+        var query, q_err = buildQuery(params)
+        if(q_err != nil){
+            errorChannel <- q_err
+            return
+        }
+
+        queryErr := db.Select(&allMetrics,  query)
+
+        if queryErr != nil {
+            errorChannel <- queryErr
+            return
+        }
+
+        //generate report using data 
+        var filePath = "metrics.csv"
+        file, f_err := createCSVFile(allMetrics, filePath)
+        if(f_err != nil){
+            errorChannel <- f_err
+            return
+        }
+
+        //save report
+        reportModel, _err := uploadFileToS3(ctx, file)
+        if(_err != nil){
+            errorChannel <- _err
+            return
+        }
+
+        reportChannel <- reportModel
+
+    }()
+
+    defer close(reportChannel)
+    defer close(errorChannel)
+
+    return reportChannel, errorChannel    
+}
+
+func createCSVFile(data []MetricsModel, filepath string) (*os.File, error){
+    file, err := os.Create(filepath)
+    
+    defer file.Close()
+    if err != nil {
+        return file, err
+    }
+
+    dataWriter := csv.NewWriter(file)
+    
+    for _, mm := range data {
+        var row []string
+        row = append(row, *mm.Campaign_ID)
+        row = append(row, *mm.Newsletter_ID)
+        row = append(row, mm.Creates_At.String())
+        row = append(row, *&mm.Metric)
+        row = append(row, strconv.Itoa(mm.Metric_Count))
+        dataWriter.Write(row)
+    }
+
+    dataWriter.Flush()
+  
+    return file, nil
+}
+
+func uploadFileToS3(ctx context.Context, file *os.File) (*ReportModel, error){
+
+    reportModel := ReportModel{URL: "http://test.test"}
+    return &reportModel, nil
+}
 
 func buildQuery(params map[string][]string) (string, error){
     //if campaign 
@@ -82,8 +182,7 @@ func buildQuery(params map[string][]string) (string, error){
     //add more object filters here
 
     //all inclusive
-    return buildAll(params)
-   
+    return buildAll(params)   
 }
 
 func buildCampaignQuery(params map[string][]string) (string,  error){
@@ -161,11 +260,8 @@ func buildWithCommonParams (params map[string][]string) (string,  error){
     workspace_id, w_ok := params["workspace_id"]
 
     if !w_ok || len(workspace_id) != 1  {
-
         return "" , errors.New("only one value of Workspace_id is required")
-
     }else {
-
         queryString += fmt.Sprintf("d.workspace_id = %s ", workspace_id[0])
     }
 
