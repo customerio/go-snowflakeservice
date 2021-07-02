@@ -22,3 +22,5 @@ The available query options are listed below
 "dtypes=email&dtypes=push"
 - metric : **<not_required>** This parameter allows you to specify metrics to seach for. It can also take in multiple values. E.g
 "metric=clicked&metric=sent&metric=unsubscribed
+- page : **<not_required>** this indicates the page number. Default is 1 when it is not present in the parameters
+- size : **<not_required>** this indicates the number of results to return per page; Default is 10 if it is not persent in the parameters
