@@ -5,7 +5,7 @@ import (
 	config "snowflakeservice/config"
 )
 
-func GetConnectionString() string{
+func getConnectionString() string{
 	server := config.SF_SERVER
 	userName := config.SF_USERNAME
 	password := config.SF_PASSWORD

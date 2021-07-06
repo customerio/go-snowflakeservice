@@ -5,4 +5,6 @@ const (
 	AWS_S3_BUCKET = ""
 	AWS_S3_FILEPATH = ""
 	AWS_URL=""
+	AWS_ACCESS_KEY=""
+	AWS_ACCESS_KEY_ID=""
 )

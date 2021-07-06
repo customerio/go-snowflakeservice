@@ -3,25 +3,28 @@ package metrics_v3
 
 import (
 	"context"
-	//	"database/sql"
 	"encoding/csv"
 	"errors"
 	"fmt"
 	"os"
+	"snowflakeservice/database"
 	"strconv"
 	"strings"
 
-	//  databaseConfig "snowflakeservice/database"
-
-	"github.com/jmoiron/sqlx"
+	"github.com/aws/aws-sdk-go/aws/session"
 )
 
 func getMetrics(ctx context.Context, params map[string][]string ) (Result, error) {
     result := Result{}
 
-    //db
-	db, err := ctx.Value("db").(*sqlx.DB)
+    dbs,err := ctx.Value("dbs").(*database.DBSessions)
     if !err {
+        return result, errors.New("could not get database connection pool from context")
+    }
+
+    //db
+	db := dbs.Sf_session
+    if db == nil {
         return result, errors.New("could not get database connection pool from context")
     }
 
@@ -65,35 +68,51 @@ func getMetrics(ctx context.Context, params map[string][]string ) (Result, error
     return result, nil
 }
 
-func getMetricsAsync(ctx context.Context, params map[string][]string) (r *ReportModel, e error){
+func getMetricsAsync(ctx context.Context, params map[string][]string) (e error){
     
-    reportModel, r_err := generateReport(ctx, params)
+    r_err := generateReport(ctx, params)
     
     if e, ok := <-r_err ; ok{
-        return r, e
+        return e
     }
-  
-    r = <-reportModel
-    return r,nil
+    return nil
  }
 
 
  //helpers
-func generateReport(ctx context.Context, params map[string][]string) (chan *ReportModel, chan error){
+func generateReport(ctx context.Context, params map[string][]string) (chan error){
 
-    reportChannel := make(chan *ReportModel)
+   // reportChannel := make(chan *ReportModel)
     errorChannel := make(chan error)
 
-    go func(){
-        // defer close(reportChannel)
-        // defer close(errorChannel)
+    dbs, err := ctx.Value("dbs").(*database.DBSessions)
+    if(!err){
+        errorChannel <- errors.New("could not get database connection pool from context")
+        return errorChannel
+    }
         
-        //db
-        db, err := ctx.Value("db").(*sqlx.DB)
-        if !err {
-            errorChannel <- errors.New("could not get database connection pool from context")
-            return 
-        }
+    //db
+    db := dbs.Sf_session
+    if db == nil {
+        errorChannel <- errors.New("could not get Snowflake database connection pool from context")
+        return errorChannel
+    }
+
+    //aws
+    awsSession := dbs.S3_session
+    if db == nil {
+        errorChannel <- errors.New("could not get AWS database connection pool from context")
+        return errorChannel
+    }
+
+    //check email param
+    receiverEmail, ok := params["email"]
+    if(!ok || len(receiverEmail) != 1){
+        errorChannel <- errors.New("Only one value of email parameter is required")
+    }
+
+    go func(){
+        
 
         allMetrics := []MetricsModel{}
 
@@ -120,38 +139,45 @@ func generateReport(ctx context.Context, params map[string][]string) (chan *Repo
         }
 
         //save report
-        reportModel, _err := uploadFileToS3(ctx, file)
+        reportModel, _err := uploadFileToS3(awsSession, file)
         if(_err != nil){
             errorChannel <- _err
             return
         }
 
-        reportChannel <- reportModel
-
+        sendNotificationEmail(reportModel.URL, receiverEmail[0])
+        
     }()
 
-    defer close(reportChannel)
+    fmt.Println("Done")
     defer close(errorChannel)
-
-    return reportChannel, errorChannel    
+    
+    return nil    
 }
 
 func createCSVFile(data []MetricsModel, filepath string) (*os.File, error){
     file, err := os.Create(filepath)
-    
-    defer file.Close()
     if err != nil {
         return file, err
     }
+    defer file.Close()
 
     dataWriter := csv.NewWriter(file)
     
     for _, mm := range data {
         var row []string
-        row = append(row, *mm.Campaign_ID)
-        row = append(row, *mm.Newsletter_ID)
+        if (mm.Campaign_ID != nil){
+             row = append(row, *mm.Campaign_ID)
+        }else {
+             row = append(row, "")
+        }
+        if (mm.Newsletter_ID != nil){
+             row = append(row, *mm.Newsletter_ID)
+        }else {
+             row = append(row, "")
+        }
         row = append(row, mm.Creates_At.String())
-        row = append(row, *&mm.Metric)
+        row = append(row, mm.Metric)
         row = append(row, strconv.Itoa(mm.Metric_Count))
         dataWriter.Write(row)
     }
@@ -161,10 +187,22 @@ func createCSVFile(data []MetricsModel, filepath string) (*os.File, error){
     return file, nil
 }
 
-func uploadFileToS3(ctx context.Context, file *os.File) (*ReportModel, error){
+func uploadFileToS3(awsSession *session.Session, file *os.File) (*ReportModel, error){
 
     reportModel := ReportModel{URL: "http://test.test"}
+
+    // result, err := database.UploadFile(awsSession,file)
+    // if(err != nil) {
+    //     return nil, err
+    // }
+
+    // reportModel.URL = result
+
     return &reportModel, nil
+}
+
+func sendNotificationEmail(url string, email string) {
+
 }
 
 func buildQuery(params map[string][]string) (string, error){

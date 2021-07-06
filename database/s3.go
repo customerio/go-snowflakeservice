@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 )
 
-func NewSession() (*session.Session, error) {
+func newSession() (*session.Session, error) {
 
 	sess, err := session.NewSession(&aws.Config{Region: aws.String(config.AWS_REGION)})
 	if err != nil {
