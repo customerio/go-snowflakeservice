@@ -108,7 +108,7 @@ func generateReport(ctx context.Context, params map[string][]string) (chan error
     //check email param
     receiverEmail, ok := params["email"]
     if(!ok || len(receiverEmail) != 1){
-        errorChannel <- errors.New("Only one value of email parameter is required")
+        errorChannel <- errors.New("only one value of email parameter is required")
     }
 
     go func(){
