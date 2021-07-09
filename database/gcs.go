@@ -19,12 +19,13 @@ import (
 )
 
 const (
-	DEV_BUCKET   = "sf_reports_dev"
-	PROD_BUCKET  = "sf_reports_prod"
-	CONTENT_TYPE = "text/csv"
+	PART_BUCKET    = "sf_reports_"
+	CONTENT_TYPE   = "text/csv"
+	PART_CONF_FILE = "gsc_"
 )
 
 var currentBucket string
+var currentConf string
 
 func getConfig(env string) (*config.GCSConfig, error) {
 	env = strings.ToLower(env)
@@ -32,18 +33,16 @@ func getConfig(env string) (*config.GCSConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	if env == "dev" {
-		currentBucket = DEV_BUCKET
-	} else if env == "prod" {
-		currentBucket = PROD_BUCKET
-	}
+
+	currentBucket = PART_BUCKET + env
+	currentConf = PART_CONF_FILE + env + ".json"
 
 	return &gcsConfig, nil
 
 }
 
 func newClient(ctx context.Context) (*storage.Client, error) {
-	return storage.NewClient(ctx, option.WithCredentialsFile("gcs_dev.json"))
+	return storage.NewClient(ctx, option.WithCredentialsFile(currentConf))
 }
 
 func UploadPath(filepath string, nameOfObject string) error {

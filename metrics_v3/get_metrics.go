@@ -52,7 +52,7 @@ func getMetrics(ctx context.Context, params map[string][]string) (Result, error)
 	query += fmt.Sprintf(" limit %d offset %d", limit, offset)
 
 	//get data
-	var allMetrics []MetricsModel //= []MetricsModel{}
+	var allMetrics []MetricsModel
 	queryErr := db.Select(&allMetrics, query)
 
 	if queryErr != nil {
