@@ -6,12 +6,12 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"snowflakeservice/database"
 	"strconv"
 	"strings"
-
-	"github.com/aws/aws-sdk-go/aws/session"
+	"time"
 )
 
 func getMetrics(ctx context.Context, params map[string][]string) (Result, error) {
@@ -66,46 +66,36 @@ func getMetrics(ctx context.Context, params map[string][]string) (Result, error)
 	return result, nil
 }
 
-func getMetricsAsync(ctx context.Context, params map[string][]string) (e error) {
+func getMetricsAsync(ctx context.Context, params map[string][]string) error {
 
 	r_err := generateReport(ctx, params)
 
-	if e, ok := <-r_err; ok {
-		return e
+	if r_err != nil {
+		return r_err
 	}
 	return nil
 }
 
 //helpers
-func generateReport(ctx context.Context, params map[string][]string) chan error {
+func generateReport(ctx context.Context, params map[string][]string) error {
 
 	// reportChannel := make(chan *ReportModel)
-	errorChannel := make(chan error)
 
 	dbs, err := ctx.Value("dbs").(*database.DBSessions)
 	if !err {
-		errorChannel <- errors.New("could not get database connection pool from context")
-		return errorChannel
+		return errors.New("could not get database connection pool from context")
 	}
 
 	//db
 	db := dbs.Sf_session
 	if db == nil {
-		errorChannel <- errors.New("could not get Snowflake database connection pool from context")
-		return errorChannel
+		return errors.New("could not get Snowflake database connection pool from context")
 	}
 
-	//aws
-	// awsSession := dbs.S3_session
-	// if db == nil {
-	// 	errorChannel <- errors.New("could not get AWS database connection pool from context")
-	// 	return errorChannel
-	// }
-
-	//check email param
-	receiverEmail, ok := params["email"]
-	if !ok || len(receiverEmail) != 1 {
-		errorChannel <- errors.New("only one value of email parameter is required")
+	//gcs
+	gcsConf := dbs.GCS_Data
+	if gcsConf == nil {
+		return errors.New("could not get GCS details from context")
 	}
 
 	go func() {
@@ -115,38 +105,41 @@ func generateReport(ctx context.Context, params map[string][]string) chan error 
 		//build query here
 		var query, q_err = buildQuery(params)
 		if q_err != nil {
-			errorChannel <- q_err
+			log.Fatal(q_err)
 			return
 		}
 
 		queryErr := db.Select(&allMetrics, query)
-
 		if queryErr != nil {
-			errorChannel <- queryErr
+			log.Fatal(queryErr)
 			return
 		}
 
 		//generate report using data
-		// var filePath = "metrics.csv"
-		// file, f_err := createCSVFile(allMetrics, filePath)
-		// if f_err != nil {
-		// 	errorChannel <- f_err
-		// 	return
-		// }
+		var filename = params["workspace_id"][0] + "_metrics_local_" + time.Now().Format(time.RFC3339Nano) + ".csv"
+		_, f_err := createCSVFile(allMetrics, filename)
+		if f_err != nil {
+			log.Fatal(f_err)
+			return
+		}
 
 		//save report
-		// reportModel, _err := uploadFileToS3(awsSession, file)
-		// if _err != nil {
-		// 	errorChannel <- _err
-		// 	return
-		// }
+		nameOfCloudObject := params["workspace_id"][0] + "_metrics_cloud_" + time.Now().Format(time.RFC3339Nano) + ".csv"
+		_err := database.UploadPath(filename, nameOfCloudObject)
+		if _err != nil {
+			log.Fatal(_err)
+			return
+		}
 
-		//sendNotificationEmail(reportModel.URL, receiverEmail[0])
+		//return signed url -- expires 4hrs from creation time
+		downloadURL, err := database.SignedURL(nameOfCloudObject, time.Duration(14400000000000), *gcsConf)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		log.Println("Download URL : " + downloadURL)
 
 	}()
-
-	fmt.Println("Done")
-	defer close(errorChannel)
 
 	return nil
 }
@@ -181,24 +174,6 @@ func createCSVFile(data []MetricsModel, filepath string) (*os.File, error) {
 	dataWriter.Flush()
 
 	return file, nil
-}
-
-func uploadFileToS3(awsSession *session.Session, file *os.File) (*ReportModel, error) {
-
-	reportModel := ReportModel{URL: "http://test.test"}
-
-	// result, err := database.UploadFile(awsSession,file)
-	// if(err != nil) {
-	//     return nil, err
-	// }
-
-	// reportModel.URL = result
-
-	return &reportModel, nil
-}
-
-func sendNotificationEmail(url string, email string) {
-
 }
 
 func buildQuery(params map[string][]string) (string, error) {
