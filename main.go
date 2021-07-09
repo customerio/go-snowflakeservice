@@ -13,20 +13,22 @@ import (
 
 //inject db connection into reuests
 func loadDB(dbs *database.DBSessions, next http.HandlerFunc) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        ctx := context.WithValue(r.Context(), "dbs", dbs)
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), "dbs", dbs)
 
-        next.ServeHTTP(w, r.WithContext(ctx))
-    }
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
 }
 
-
-
 func main() {
-	
-	dbs := database.InitDB()
-   
-    router := mux.NewRouter().StrictSlash(true)
+	env := "dev" //load environment
+
+	dbs, err := database.InitDB(env)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/", loadDB(nil, index.HomeLink))
 	router.HandleFunc("/api/metrics/search", loadDB(dbs, metricsApi.SearchMetrics))
 	router.HandleFunc("/api/metrics/report", loadDB(dbs, metricsApi.GenerateReport))

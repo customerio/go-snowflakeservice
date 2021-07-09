@@ -1,34 +1,41 @@
 package database
 
 import (
-	"log"
+	config "snowflakeservice/config"
 
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/jmoiron/sqlx"
-
 	_ "github.com/snowflakedb/gosnowflake"
 )
 
 type DBSessions struct {
-	S3_session *session.Session
+	GCS_Data   *config.GCSConfig
 	Sf_session *sqlx.DB
 }
 
-func InitDB() *DBSessions {
-	dbs := DBSessions{}
+func InitDB(env string) (*DBSessions, error) {
+	var dbs *DBSessions
 
 	//get snowflake session
-	db, err := sqlx.Open("snowflake", getConnectionString())
-    if err != nil {
-        log.Fatal(err)
-    }
+	sfConnString, err := getConnectionString(env)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := sqlx.Open("snowflake", sfConnString)
+	if err != nil {
+		return nil, err
+	}
+
+	dbs = &DBSessions{}
 	dbs.Sf_session = db
 
-	awsSession, err := newSession()
-	if( err != nil){
-		log.Fatal(err)
+	//get gcs info
+	gcsConf, err := getConfig(env)
+	if err != nil {
+		return nil, err
 	}
-	dbs.S3_session = awsSession
 
-	return &dbs;
+	dbs.GCS_Data = gcsConf
+
+	return dbs, nil
 }

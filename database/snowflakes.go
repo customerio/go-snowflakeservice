@@ -5,16 +5,15 @@ import (
 	config "snowflakeservice/config"
 )
 
-func getConnectionString() string{
-	server := config.SF_SERVER
-	userName := config.SF_USERNAME
-	password := config.SF_PASSWORD
-	dbName := config.SF_DBNAME
-	schema := config.SF_SCHEMA
-	warehouseName := config.SF_WAREHOUSE
-
+func getConnectionString(env string) (string, error) {
+	sfConfig, err := config.LoadSFConfig(env)
+	if err != nil {
+		return "", err
+	}
 	//"jsmith:mypassword@myaccount/mydb/testschema?warehouse=mywh"
-	return fmt.Sprintf("%s:%s@%s/%s/%s?warehouse=%s",
-	 userName, password, server, dbName, schema, warehouseName);
+	connString := fmt.Sprintf("%s:%s@%s/%s/%s?warehouse=%s",
+		sfConfig.SF_Username, sfConfig.SF_Password, sfConfig.SF_Server,
+		sfConfig.SF_DbName, sfConfig.SF_Schema, sfConfig.SF_Warehouse)
+	return connString, nil
 
 }
