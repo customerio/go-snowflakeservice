@@ -14,6 +14,13 @@ import (
 	"time"
 )
 
+const (
+	DELIVERIES_TABLE_NAME = "DELIVERIES"
+	METRICS_TABLE_NAME    = "METRICS_UP_TO_20210603"
+	PAGE_START_DEFAULT    = 1
+	LIMIT_DEFAULT         = 10
+)
+
 func getMetrics(ctx context.Context, params map[string][]string) (Result, error) {
 	result := Result{}
 
@@ -29,8 +36,8 @@ func getMetrics(ctx context.Context, params map[string][]string) (Result, error)
 	}
 
 	//get page number and data size
-	limit := 10 //default
-	offset := 0
+	limit := LIMIT_DEFAULT //default
+	offset := limit * (PAGE_START_DEFAULT - 1)
 
 	size, ok := params["size"]
 	if ok && len(size) == 1 {
@@ -45,15 +52,17 @@ func getMetrics(ctx context.Context, params map[string][]string) (Result, error)
 	}
 
 	//build query here
-	var query, q_err = buildQuery(params)
+	var query, args, q_err = buildQuery(params)
 	if q_err != nil {
 		return result, q_err
 	}
+
 	query += fmt.Sprintf(" limit %d offset %d", limit, offset)
 
 	//get data
 	var allMetrics []MetricsModel
-	queryErr := db.Select(&allMetrics, query)
+
+	queryErr := db.Select(&allMetrics, query, args...)
 
 	if queryErr != nil {
 		return result, queryErr
@@ -103,13 +112,13 @@ func generateReport(ctx context.Context, params map[string][]string) error {
 		allMetrics := []MetricsModel{}
 
 		//build query here
-		var query, q_err = buildQuery(params)
+		var query, args, q_err = buildQuery(params)
 		if q_err != nil {
 			log.Fatal(q_err)
 			return
 		}
 
-		queryErr := db.Select(&allMetrics, query)
+		queryErr := db.Select(&allMetrics, query, args...)
 		if queryErr != nil {
 			log.Fatal(queryErr)
 			return
@@ -176,7 +185,7 @@ func createCSVFile(data []MetricsModel, filepath string) (*os.File, error) {
 	return file, nil
 }
 
-func buildQuery(params map[string][]string) (string, error) {
+func buildQuery(params map[string][]string) (string, []interface{}, error) {
 	//if campaign
 	isCampaign, c_ok := params["isCampaign"]
 	if c_ok && len(isCampaign) == 1 && isCampaign[0] == "true" {
@@ -194,99 +203,106 @@ func buildQuery(params map[string][]string) (string, error) {
 	return buildAll(params)
 }
 
-func buildCampaignQuery(params map[string][]string) (string, error) {
-	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" + "\n" +
-		"from DELIVERIES d " + "\n" +
-		"join metrics_up_to_20210603 m " + "\n" +
-		"on d.delivery_id = m.delivery_id " + "\n" +
+func buildCampaignQuery(params map[string][]string) (string, []interface{}, error) {
+	var args []interface{}
+
+	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count " +
+		"from DELIVERIES d " +
+		"join METRICS_UP_TO_20210603 m " +
+		"on d.delivery_id = m.delivery_id " +
 		"where "
 
 	//build common params
-	subquery, err := buildWithCommonParams(params)
+	queryString, args, err := buildWithCommonParams(params, queryString, args)
 	if err != nil {
-		return "", err
+		return "", args, err
 	}
-
-	queryString += subquery
 
 	//after all query options
 	queryString += "and d.campaign_id is not null "
-	queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " + "\n" +
+	queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " +
 		"order by d.campaign_id, to_date(d.created_at) "
 
-	return queryString, nil
+	return queryString, args, nil
 }
 
-func buildNewsletterQuery(params map[string][]string) (string, error) {
-	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" + "\n" +
-		"from DELIVERIES d " + "\n" +
-		"join metrics_up_to_20210603 m " + "\n" +
-		"on d.delivery_id = m.delivery_id " + "\n" +
+func buildNewsletterQuery(params map[string][]string) (string, []interface{}, error) {
+	var args []interface{}
+
+	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count " +
+		"from ? d " +
+		"join ? m " +
+		"on d.delivery_id = m.delivery_id " +
 		"where "
 
-		//build common params
-	subquery, err := buildWithCommonParams(params)
+	args = append(args, DELIVERIES_TABLE_NAME)
+	args = append(args, METRICS_TABLE_NAME)
+
+	//build common params
+	queryString, args, err := buildWithCommonParams(params, queryString, args)
 	if err != nil {
-		return "", err
+		return "", args, err
 	}
 
-	queryString += subquery
-
 	//after all query options
-	queryString += "and d.newsletter_id is not null "
-	queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " + "\n" +
+	queryString += "and d.newsletter_id is not null " +
+		"group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " +
 		"order by d.newsletter_id, to_date(d.created_at) "
 
-	return queryString, nil
+	return queryString, args, nil
 }
 
-func buildAll(params map[string][]string) (string, error) {
-	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" + "\n" +
-		"from DELIVERIES d " + "\n" +
-		"join metrics_up_to_20210603 m " + "\n" +
-		"on d.delivery_id = m.delivery_id " + "\n" +
+func buildAll(params map[string][]string) (string, []interface{}, error) {
+	var args []interface{}
+
+	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" +
+		"from ? d " +
+		"join ? m " +
+		"on d.delivery_id = m.delivery_id " +
 		"where "
 
-		//build common params
-	subquery, err := buildWithCommonParams(params)
+	args = append(args, DELIVERIES_TABLE_NAME)
+	args = append(args, METRICS_TABLE_NAME)
+
+	//build common params
+	queryString, args, err := buildWithCommonParams(params, queryString, args)
 	if err != nil {
-		return "", err
+		return "", args, err
 	}
 
-	queryString += subquery
-
 	//after all query options
-	queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " + "\n" +
+	queryString += "group by d.campaign_id, d.newsletter_id, to_date(d.created_at), m.metric " +
 		"order by d.campaign_id, to_date(d.created_at) "
 
-	return queryString, nil
+	return queryString, args, nil
 }
 
-func buildWithCommonParams(params map[string][]string) (string, error) {
-	queryString := ""
+func buildWithCommonParams(params map[string][]string, query string, args []interface{}) (string, []interface{}, error) {
 
 	//workspace_id
 	workspace_id, w_ok := params["workspace_id"]
 
 	if !w_ok || len(workspace_id) != 1 {
-		return "", errors.New("only one value of Workspace_id is required")
+		return "", nil, errors.New("only one value of Workspace_id is required")
 	} else {
-		queryString += fmt.Sprintf("d.workspace_id = %s ", workspace_id[0])
+		query += "d.workspace_id = ? "
 	}
+	args = append(args, workspace_id[0])
 
 	//start date and end
 	start_date, s_ok := params["start"]
 	if s_ok && len(start_date) != 1 {
-
-		return "", errors.New("only one value of start is required")
+		return "", nil, errors.New("only one value of start is required")
 
 	} else if s_ok && len(start_date) == 1 {
 
 		end_date, e_ok := params["end"]
 		if !e_ok || len(end_date) != 1 {
-			return "", errors.New("only one value of end is required if there's a start date")
+			return "", nil, errors.New("only one value of end is required if there's a start date")
 		} else {
-			queryString += fmt.Sprintf("and to_date(d.created_at) between '%s' and '%s' ", start_date[0], end_date[0])
+			query += "and to_date(d.created_at) between ? and ? "
+			args = append(args, start_date[0])
+			args = append(args, end_date[0])
 		}
 
 	}
@@ -294,33 +310,31 @@ func buildWithCommonParams(params map[string][]string) (string, error) {
 	//metric
 	metric, m_ok := params["metric"]
 	if m_ok {
-		val := "'"
-		val += strings.Replace(strings.Trim(fmt.Sprint(metric), "[]"), " ", "','", -1)
-		val += "'"
-
-		queryString += fmt.Sprintf("and m.metric in (%s) ", val)
+		query += "and m.metric in (?" + strings.Repeat(",?", len(metric)-1) + ") "
+		for data := range metric {
+			args = append(args, metric[data])
+		}
 	}
 
 	//multiple dates
 	dates, d_ok := params["dates"]
 	if d_ok {
-		val := "'"
-		val += strings.Replace(strings.Trim(fmt.Sprint(dates), "[]"), " ", "','", -1)
-		val += "'"
-
-		queryString += fmt.Sprintf("and to_date(d.created_at) in (%s) ", val)
+		query += "and to_date(d.created_at) in (?" + strings.Repeat(",?", len(dates)-1) + ") "
+		for data := range dates {
+			args = append(args, dates[data])
+		}
 	}
 
 	//delivery_type
 	d_types, dt_ok := params["dtype"]
 	if dt_ok {
-		val := "'"
-		val += strings.Replace(strings.Trim(fmt.Sprint(d_types), "[]"), " ", "','", -1)
-		val += "'"
-		queryString += fmt.Sprintf("and d.delivery_type in (%s) ", val)
+		query += "and d.delivery_type in (?" + strings.Repeat(",?", len(d_types)-1) + ")"
+		for data := range d_types {
+			args = append(args, d_types[data])
+		}
 	}
 
 	//include other query options here
 
-	return queryString, nil
+	return query, args, nil
 }
