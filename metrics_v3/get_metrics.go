@@ -230,13 +230,10 @@ func buildNewsletterQuery(params map[string][]string) (string, []interface{}, er
 	var args []interface{}
 
 	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count " +
-		"from ? d " +
-		"join ? m " +
+		"from DELIVERIES d " +
+		"join METRICS_UP_TO_20210603 m " +
 		"on d.delivery_id = m.delivery_id " +
 		"where "
-
-	args = append(args, DELIVERIES_TABLE_NAME)
-	args = append(args, METRICS_TABLE_NAME)
 
 	//build common params
 	queryString, args, err := buildWithCommonParams(params, queryString, args)
@@ -256,13 +253,10 @@ func buildAll(params map[string][]string) (string, []interface{}, error) {
 	var args []interface{}
 
 	var queryString = "select d.campaign_id, d.newsletter_id, to_date(d.created_at) as created_at, m.metric, count(metric) as metric_count" +
-		"from ? d " +
-		"join ? m " +
+		"from DELIVERIES d " +
+		"join METRICS_UP_TO_20210603 m " +
 		"on d.delivery_id = m.delivery_id " +
 		"where "
-
-	args = append(args, DELIVERIES_TABLE_NAME)
-	args = append(args, METRICS_TABLE_NAME)
 
 	//build common params
 	queryString, args, err := buildWithCommonParams(params, queryString, args)
